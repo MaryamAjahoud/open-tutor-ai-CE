@@ -77,3 +77,48 @@ def init_database():
     print("OpenTutorAI database tables initialized successfully")
     
     return engine
+
+
+class Assignment(Base):
+    """Table for storing teacher assignments."""
+    __tablename__ = f"{PREFIX}assignment"
+
+    id = Column(String, primary_key=True, index=True)
+    teacher_id = Column(String, index=True, nullable=False)
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    course = Column(String, nullable=True)
+    course_id = Column(String, nullable=True)
+    course_color = Column(String, nullable=True, default="from-indigo-500 to-indigo-600")
+    due_date = Column(String, nullable=False)
+    due_time = Column(String, nullable=False, default="23:59")
+    points = Column(Integer, nullable=False, default=100)
+    status = Column(String, nullable=False, default="active")
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=True, onupdate=func.now())
+
+    def __repr__(self):
+        return f"<Assignment(id={self.id}, title={self.title})>"
+
+
+class Submission(Base):
+    """Table for storing student submissions."""
+    __tablename__ = f"{PREFIX}submission"
+
+    id = Column(String, primary_key=True, index=True)
+    assignment_id = Column(String, ForeignKey(f"{PREFIX}assignment.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(String, nullable=False, index=True)
+    student_name = Column(String, nullable=True)
+    student_email = Column(String, nullable=True)
+    content = Column(Text, nullable=True)
+    file_ids = Column(JSONField, nullable=True)
+    status = Column(String, nullable=False, default="submitted")
+    grade = Column(String, nullable=True)
+    feedback = Column(Text, nullable=True)
+    submitted_at = Column(DateTime, nullable=False, server_default=func.now())
+    graded_at = Column(DateTime, nullable=True)
+
+    assignment = relationship("Assignment", backref="submissions")
+
+    def __repr__(self):
+        return f"<Submission(id={self.id}, assignment_id={self.assignment_id}, student_id={self.student_id})>"

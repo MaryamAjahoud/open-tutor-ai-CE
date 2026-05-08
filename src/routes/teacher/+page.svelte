@@ -1,101 +1,191 @@
 <script>
 	import { goto } from '$app/navigation';
 	import { user } from '$lib/stores';
-  import { onMount, getContext } from 'svelte';
+	import { onMount, getContext } from 'svelte';
+	import TeacherSidebar from '$lib/components/teacher/TeacherSidebar.svelte';
+	import { getKnowledgeBases } from '$lib/apis/knowledge';
 
-
+	const i18n = getContext('i18n');
+	let isSidebarOpen = false;
 	let loading = true;
-	let error = null;
-  const i18n = getContext('i18n');
+	let totalCourses = 0;
+	let totalFiles = 0;
+	let recentCourses = [];
 
+	const subjectLabels = {
+		'mathematics': { label: 'Mathematics', icon: '📊', color: 'from-blue-500 to-blue-600' },
+		'science': { label: 'Science', icon: '🔬', color: 'from-teal-500 to-teal-600' },
+		'history': { label: 'History', icon: '🏛️', color: 'from-amber-500 to-amber-600' },
+		'computer-science': { label: 'Computer Science', icon: '💻', color: 'from-indigo-500 to-indigo-600' },
+		'english': { label: 'English', icon: '📚', color: 'from-purple-500 to-purple-600' },
+		'geography': { label: 'Geography', icon: '🌍', color: 'from-green-500 to-green-600' },
+		'chemistry': { label: 'Chemistry', icon: '🧪', color: 'from-rose-500 to-rose-600' },
+		'biology': { label: 'Biology', icon: '🌿', color: 'from-emerald-500 to-emerald-600' },
+		'physics': { label: 'Physics', icon: '⚛️', color: 'from-cyan-500 to-cyan-600' },
+		'other': { label: 'Other', icon: '📌', color: 'from-slate-500 to-slate-600' }
+	};
 
 	onMount(async () => {
+		if (!$user) { goto('/auth'); return; }
+		if ($user.role !== 'teacher' && $user.role !== 'admin') { goto(`/${$user.role}`); return; }
 		try {
-			loading = true;
-
-			if (!$user) {
-				console.log('No user found, redirecting to auth page');
-				goto('/auth');
-				return;
-			}
-
-			console.log('Current user role:', $user.role);
-
-			// Allow access to teachers
-			if ($user.role !== 'teacher') {
-				console.log('User is not a teacher, redirecting to home');
-				await goto(`/${$user.role}`);
-				return;
-			}
-
-			// User has the correct role, continue loading the page
-			loading = false;
-		} catch (err) {
-			console.error('Error in teacher page:', err);
-			error = err.message || 'An error occurred';
-			loading = false;
-		}
+			const data = await getKnowledgeBases(localStorage.token);
+			const rawList = Array.isArray(data) ? data : (data?.data || []);
+			totalCourses = rawList.length;
+			totalFiles = rawList.reduce((acc, c) => acc + (c.data?.file_ids?.length || c.files?.length || 0), 0);
+			recentCourses = rawList
+				.slice(0, 4)
+				.map(c => {
+					let parsedSubject = 'other';
+					let cleanDescription = c.description || '';
+					const match = cleanDescription.match(/^\[Subject:\s*([\w-]+)\]\s*(.*)$/is);
+					if (match) { parsedSubject = match[1].toLowerCase(); cleanDescription = match[2]; }
+					if (!subjectLabels[parsedSubject]) parsedSubject = 'other';
+					return { ...c, parsedSubject, cleanDescription };
+				});
+		} catch (e) { console.error(e); }
+		loading = false;
 	});
+
+	const quickActions = [
+		{ label: 'Create Course', icon: '📚', href: '/teacher/courses', action: 'create', color: 'from-indigo-500 to-blue-600' },
+		{ label: 'My Courses', icon: '🗂️', href: '/teacher/courses', color: 'from-purple-500 to-indigo-600' },
+		{ label: 'Announcements', icon: '📢', href: '/teacher/announcements', color: 'from-amber-500 to-orange-600' },
+		{ label: 'Students', icon: '👥', href: '/teacher/students', color: 'from-emerald-500 to-teal-600' }
+	];
 </script>
 
-{#if loading}
-	<div class="flex justify-center items-center min-h-screen">
-		<div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-	</div>
-{:else if error}
-	<div
-		class="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900 p-6"
-	>
-		<div class="w-full max-w-4xl bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8">
-			<h1 class="text-3xl font-bold text-center mb-4 text-red-600">{$i18n.t('Error Loading Teacher Page')}</h1>
-			<p class="text-gray-700 dark:text-gray-300 text-center mb-6">{error}</p>
-			<div class="flex justify-center">
-				<button
-					class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-					on:click={() => goto('/auth')}
-				>
-					{$i18n.t('Return to Login')}
+<svelte:head>
+	<title>Teacher Dashboard | EduConnect</title>
+</svelte:head>
+
+<div class="min-h-screen bg-slate-50 dark:bg-slate-950 flex font-sans text-slate-800 dark:text-slate-200">
+	<TeacherSidebar bind:isOpen={isSidebarOpen} />
+
+	<div class="flex-1 md:ml-64 flex flex-col min-h-screen">
+		<!-- Header -->
+		<header class="h-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-6 lg:px-10 sticky top-0 z-30">
+			<div class="flex items-center gap-4">
+				<button class="md:hidden p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl" on:click={() => isSidebarOpen = true}>
+					<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
 				</button>
 			</div>
-		</div>
-	</div>
-{:else}
-	<div
-		class="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900 p-6"
-	>
-		<div class="w-full max-w-4xl bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8">
-			<h1 class="text-3xl font-bold text-center mb-8 text-gray-800 dark:text-white">
-				{$i18n.t('Teacher Page')}
-			</h1>
-
-			<div class="space-y-6">
-				<div class="bg-green-50 dark:bg-green-900/20 p-6 rounded-lg">
-					<h2 class="text-xl font-semibold mb-4 text-green-700 dark:text-green-300">
-						{$i18n.t('Welcome to Your Teaching Dashboard')}
-					</h2>
-					<p class="text-gray-700 dark:text-gray-300">
-						{$i18n.t('This is your personalized teaching space. Here you can manage your courses, create assignments, and monitor student progress.')}
-					</p>
-					{#if $user}
-						<div class="mt-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
-							<h3 class="font-medium text-green-700 dark:text-green-300">{$i18n.t('Your Account Info:')}</h3>
-							<p class="text-gray-700 dark:text-gray-300">{$i18n.t('Full Name')}: {$user.name}</p>
-							<p class="text-gray-700 dark:text-gray-300">{$i18n.t('Email')}: {$user.email}</p>
-							<p class="text-gray-700 dark:text-gray-300">{$i18n.t('Role')}: {$user.role}</p>
-
-							<button
-								class="text-xs text-center w-full mt-4 text-gray-400 underline"
-								on:click={() => {
-									localStorage.removeItem('token');
-									location.href = '/auth';
-								}}
-							>
-								{$i18n.t('Sign Out')}
-							</button>
-						</div>
-					{/if}
+			{#if $user}
+				<div class="flex items-center gap-3 pl-5 border-l border-slate-200 dark:border-slate-800 cursor-pointer group">
+					<div class="hidden md:block text-right">
+						<p class="text-sm font-semibold text-slate-900 dark:text-white">{$user.name}</p>
+						<p class="text-xs text-slate-500 capitalize">{$user.role}</p>
+					</div>
+					<div class="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-md">{$user.name.charAt(0).toUpperCase()}</div>
 				</div>
-			</div>
-		</div>
+			{/if}
+		</header>
+
+		<main class="flex-1 p-6 lg:p-10 overflow-y-auto">
+			{#if loading}
+				<div class="animate-pulse space-y-6">
+					<div class="h-48 bg-slate-200 dark:bg-slate-800 rounded-3xl"></div>
+					<div class="grid grid-cols-4 gap-4">{#each Array(4) as _}<div class="h-24 bg-slate-100 dark:bg-slate-800 rounded-2xl"></div>{/each}</div>
+				</div>
+			{:else}
+				<!-- Welcome Hero -->
+				<div class="mb-10 relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-10 shadow-xl border border-slate-800">
+					<div class="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-indigo-500 opacity-20 rounded-full blur-[80px]"></div>
+					<div class="absolute bottom-0 left-20 -mb-10 w-48 h-48 bg-blue-500 opacity-20 rounded-full blur-[60px]"></div>
+					<div class="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+						<div>
+							<h1 class="text-4xl font-bold text-white mb-3 tracking-tight">
+								Welcome back, <span class="text-indigo-300">{$user?.name.split(' ')[0]}</span>! 👋
+							</h1>
+							<p class="text-slate-300 text-lg font-light leading-relaxed max-w-xl">
+								Manage your courses, upload materials and communicate with your students — all in one place.
+							</p>
+						</div>
+						<a href="/teacher/courses" class="group inline-flex items-center px-7 py-3.5 bg-indigo-500 hover:bg-indigo-400 text-white font-semibold rounded-2xl shadow-lg shadow-indigo-500/30 transition-all hover:-translate-y-0.5 active:scale-95 whitespace-nowrap">
+							<div class="bg-white/20 p-1.5 rounded-lg mr-3 group-hover:bg-white/30 transition-colors">
+								<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+							</div>
+							Go to Courses
+						</a>
+					</div>
+				</div>
+
+				<!-- Stats Row -->
+				<div class="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
+					<div class="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm">
+						<div class="flex items-center justify-between mb-4">
+							<p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Courses</p>
+							<div class="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl flex items-center justify-center text-xl">📚</div>
+						</div>
+						<p class="text-4xl font-bold text-slate-900 dark:text-white">{totalCourses}</p>
+					</div>
+					<div class="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm">
+						<div class="flex items-center justify-between mb-4">
+							<p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Files</p>
+							<div class="w-10 h-10 bg-blue-50 dark:bg-blue-500/10 rounded-xl flex items-center justify-center text-xl">📎</div>
+						</div>
+						<p class="text-4xl font-bold text-slate-900 dark:text-white">{totalFiles}</p>
+					</div>
+					<div class="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm">
+						<div class="flex items-center justify-between mb-4">
+							<p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Announcements</p>
+							<div class="w-10 h-10 bg-amber-50 dark:bg-amber-500/10 rounded-xl flex items-center justify-center text-xl">📢</div>
+						</div>
+						<p class="text-4xl font-bold text-slate-900 dark:text-white">2</p>
+					</div>
+					<div class="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm">
+						<div class="flex items-center justify-between mb-4">
+							<p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Students</p>
+							<div class="w-10 h-10 bg-emerald-50 dark:bg-emerald-500/10 rounded-xl flex items-center justify-center text-xl">👥</div>
+						</div>
+						<p class="text-4xl font-bold text-slate-900 dark:text-white">—</p>
+					</div>
+				</div>
+
+				<!-- Quick Actions -->
+				<div class="mb-10">
+					<h2 class="text-xl font-bold text-slate-900 dark:text-white mb-5 tracking-tight">Quick Actions</h2>
+					<div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+						{#each quickActions as qa}
+							<a href={qa.href} class="group bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 flex flex-col items-center text-center hover:border-indigo-300 dark:hover:border-indigo-500/40 hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
+								<div class="w-14 h-14 bg-gradient-to-br {qa.color} rounded-2xl flex items-center justify-center text-2xl mb-4 shadow-md group-hover:scale-110 transition-transform">{qa.icon}</div>
+								<span class="text-sm font-bold text-slate-700 dark:text-slate-300">{qa.label}</span>
+							</a>
+						{/each}
+					</div>
+				</div>
+
+				<!-- Recent Courses -->
+				{#if recentCourses.length > 0}
+					<div>
+						<div class="flex items-center justify-between mb-5">
+							<h2 class="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Recent Courses</h2>
+							<a href="/teacher/courses" class="text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">View all →</a>
+						</div>
+						<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+							{#each recentCourses as course}
+								{@const subj = subjectLabels[course.parsedSubject] || subjectLabels['other']}
+								<a href="/teacher/courses/{course.id}" class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 block group">
+									<div class="h-16 bg-gradient-to-br {subj.color} flex items-center px-5 relative overflow-hidden">
+										<div class="absolute right-3 text-3xl opacity-20">{subj.icon}</div>
+										<span class="text-white font-bold text-sm truncate relative z-10">{course.name}</span>
+									</div>
+									<div class="p-4 flex items-center justify-between">
+										<span class="text-xs text-slate-400">{subj.label}</span>
+										<span class="text-xs text-indigo-600 dark:text-indigo-400 font-semibold group-hover:gap-2 flex items-center gap-1">
+											Open <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+										</span>
+									</div>
+								</a>
+							{/each}
+						</div>
+					</div>
+				{/if}
+			{/if}
+		</main>
 	</div>
+</div>
+
+{#if isSidebarOpen}
+	<div class="fixed inset-0 bg-slate-900/50 z-40 md:hidden backdrop-blur-sm" on:click={() => isSidebarOpen = false}></div>
 {/if}
