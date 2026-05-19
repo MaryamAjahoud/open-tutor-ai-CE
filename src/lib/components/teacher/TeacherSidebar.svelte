@@ -1,10 +1,19 @@
 <script>
 	import { getContext } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
+	import { user } from '$lib/stores';
 
 	export let isOpen = false;
 
 	const i18n = getContext('i18n');
+
+	function logout() {
+		localStorage.removeItem('token');
+		localStorage.removeItem('user');
+		user.set(null);
+		goto('/auth');
+	}
 
 	// Navigation items
 	const navItems = [
@@ -79,11 +88,23 @@
 		{/each}
 	</nav>
 
-	<div class="p-6 border-t border-slate-800 mt-auto">
-		<div class="bg-slate-800/50 rounded-2xl p-5 border border-slate-700/50 relative overflow-hidden group hover:border-slate-600 transition-colors">
+	<div class="p-4 border-t border-slate-800 mt-auto space-y-3">
+		<!-- Logout button -->
+		<button
+			on:click={logout}
+			class="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition-all duration-200 group"
+		>
+			<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+			</svg>
+			<span class="text-sm font-semibold">{$i18n ? $i18n.t('Logout') : 'Déconnexion'}</span>
+		</button>
+
+		<!-- Help card -->
+		<div class="bg-slate-800/50 rounded-2xl p-4 border border-slate-700/50 relative overflow-hidden group hover:border-slate-600 transition-colors">
 			<div class="absolute -right-4 -top-4 w-16 h-16 bg-indigo-500/10 rounded-full blur-xl group-hover:bg-indigo-500/20 transition-colors"></div>
 			<h4 class="text-sm font-semibold text-slate-200 mb-1">{$i18n ? $i18n.t('Need Help?') : 'Need Help?'}</h4>
-			<p class="text-xs text-slate-400 mb-4 leading-relaxed">{$i18n ? $i18n.t('Check our teacher guides') : 'Check our teacher guides'}</p>
+			<p class="text-xs text-slate-400 mb-3 leading-relaxed">{$i18n ? $i18n.t('Check our teacher guides') : 'Check our teacher guides'}</p>
 			<a href="/docs" class="text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 py-2 px-4 rounded-xl w-full inline-block text-center transition-all shadow-md shadow-indigo-900/20 active:scale-95">
 				{$i18n ? $i18n.t('View Guides') : 'View Guides'}
 			</a>

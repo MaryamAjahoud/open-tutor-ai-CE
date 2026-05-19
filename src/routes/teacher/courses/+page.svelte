@@ -6,6 +6,7 @@
 	import CourseManagementModal from '$lib/components/teacher/CourseManagementModal.svelte';
 	import { getKnowledgeBases, createNewKnowledge, updateKnowledgeById, deleteKnowledgeById, addFileToKnowledgeById } from '$lib/apis/knowledge';
 	import { uploadFile } from '$lib/apis/files';
+	import { TUTOR_API_BASE_URL } from '$lib/constants';
 
 	const i18n = getContext('i18n');
 	let isSidebarOpen = false;
@@ -17,6 +18,9 @@
 	let editCourseItem = null;
 	let deletingCourseId = null;
 	let searchQuery = '';
+	// Track which knowledge base IDs are shared with the classroom
+	let sharedCourseIds = new Set();
+	let sharingCourseId = null; // currently toggling
 
 	const subjectLabels = {
 		'mathematics': { label: 'Mathematics', icon: '📊', color: 'from-blue-500 to-blue-600' },
@@ -62,9 +66,73 @@
 	onMount(async () => {
 		if (!$user) { goto('/auth'); return; }
 		if ($user.role !== 'teacher' && $user.role !== 'admin') { goto(`/${$user.role}`); return; }
-		await fetchCourses();
+		await Promise.all([fetchCourses(), fetchSharedCourses()]);
 		loading = false;
+		// Auto-share all existing courses that aren't shared yet
+		for (const course of courses) {
+			autoShareCourse(course.id, course.name);
+		}
 	});
+
+	async function fetchSharedCourses() {
+		try {
+			const res = await fetch(`${TUTOR_API_BASE_URL}/teacher/classroom/shared-courses`, {
+				headers: { Authorization: `Bearer ${localStorage.token}` }
+			});
+			if (res.ok) {
+				const data = await res.json();
+				sharedCourseIds = new Set(data.map((d) => d.knowledge_id));
+			}
+		} catch (e) { console.error(e); }
+	}
+
+	// Auto-share a single course silently (no UI feedback needed)
+	async function autoShareCourse(courseId, courseName) {
+		if (sharedCourseIds.has(courseId)) return; // already shared
+		try {
+			const res = await fetch(`${TUTOR_API_BASE_URL}/teacher/classroom/share-course`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.token}` },
+				body: JSON.stringify({ knowledge_id: courseId, knowledge_name: courseName })
+			});
+			if (res.ok) {
+				sharedCourseIds.add(courseId);
+				sharedCourseIds = new Set(sharedCourseIds);
+			}
+		} catch (e) { /* silent */ }
+	}
+
+	async function toggleShareCourse(course) {
+		if (sharingCourseId) return;
+		sharingCourseId = course.id;
+		const isShared = sharedCourseIds.has(course.id);
+		try {
+			if (isShared) {
+				const res = await fetch(`${TUTOR_API_BASE_URL}/teacher/classroom/share-course/${course.id}`, {
+					method: 'DELETE',
+					headers: { Authorization: `Bearer ${localStorage.token}` }
+				});
+				if (res.ok) {
+					sharedCourseIds.delete(course.id);
+					sharedCourseIds = new Set(sharedCourseIds); // trigger reactivity
+				}
+			} else {
+				const res = await fetch(`${TUTOR_API_BASE_URL}/teacher/classroom/share-course`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.token}` },
+					body: JSON.stringify({ knowledge_id: course.id, knowledge_name: course.name })
+				});
+				if (res.ok) {
+					sharedCourseIds.add(course.id);
+					sharedCourseIds = new Set(sharedCourseIds); // trigger reactivity
+				}
+			}
+		} catch (e) {
+			console.error('Toggle share failed', e);
+		} finally {
+			sharingCourseId = null;
+		}
+	}
 
 	$: filteredCourses = searchQuery.trim()
 		? courses.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.cleanDescription?.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -93,6 +161,8 @@
 					if (fileId) await addFileToKnowledgeById(token, courseId, fileId);
 				}
 			}
+			// Auto-share the course with the classroom
+			await autoShareCourse(courseId, name);
 			await fetchCourses();
 			isModalOpen = false;
 		} catch (err) {
@@ -107,6 +177,15 @@
 		deletingCourseId = id;
 		try {
 			await deleteKnowledgeById(localStorage.token, id);
+			// Also unshare from classroom
+			if (sharedCourseIds.has(id)) {
+				await fetch(`${TUTOR_API_BASE_URL}/teacher/classroom/share-course/${id}`, {
+					method: 'DELETE',
+					headers: { Authorization: `Bearer ${localStorage.token}` }
+				}).catch(() => {});
+				sharedCourseIds.delete(id);
+				sharedCourseIds = new Set(sharedCourseIds);
+			}
 			await fetchCourses();
 		} catch (err) {
 			alert('Failed to delete course: ' + err);
@@ -230,14 +309,35 @@
 								{#if course.cleanDescription}
 									<p class="text-sm text-slate-500 dark:text-slate-400 line-clamp-2 mb-4 leading-relaxed">{course.cleanDescription}</p>
 								{/if}
-								<div class="mt-auto flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800">
-									<div class="flex items-center gap-1.5 text-xs text-slate-400 font-medium">
-										<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
-										{course.files?.length || 0} file{(course.files?.length || 0) !== 1 ? 's' : ''}
+								<div class="mt-auto pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+									<div class="flex items-center justify-between">
+										<div class="flex items-center gap-1.5 text-xs text-slate-400 font-medium">
+											<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+											{course.files?.length || 0} file{(course.files?.length || 0) !== 1 ? 's' : ''}
+										</div>
+										<span class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 group-hover:gap-2 transition-all">
+											Open <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+										</span>
 									</div>
-									<span class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 group-hover:gap-2 transition-all">
-										Open <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-									</span>
+									<!-- Share with class toggle -->
+									<button
+										on:click|stopPropagation={() => toggleShareCourse(course)}
+										disabled={sharingCourseId === course.id}
+										class="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-semibold transition-all
+											{sharedCourseIds.has(course.id)
+												? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/30'
+												: 'bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-200'}"
+									>
+										{#if sharingCourseId === course.id}
+											<svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+										{:else if sharedCourseIds.has(course.id)}
+											<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+											Partagé avec la classe
+										{:else}
+											<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
+											Partager avec la classe
+										{/if}
+									</button>
 								</div>
 							</div>
 						</div>

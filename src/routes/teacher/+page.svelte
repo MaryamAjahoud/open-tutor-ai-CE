@@ -4,13 +4,16 @@
 	import { onMount, getContext } from 'svelte';
 	import TeacherSidebar from '$lib/components/teacher/TeacherSidebar.svelte';
 	import { getKnowledgeBases } from '$lib/apis/knowledge';
+	import { TUTOR_API_BASE_URL } from '$lib/constants';
 
 	const i18n = getContext('i18n');
 	let isSidebarOpen = false;
+	let showUserMenu = false;
 	let loading = true;
 	let totalCourses = 0;
 	let totalFiles = 0;
 	let recentCourses = [];
+	let studentCount = null; // null = loading, number = fetched
 
 	const subjectLabels = {
 		'mathematics': { label: 'Mathematics', icon: '📊', color: 'from-blue-500 to-blue-600' },
@@ -29,7 +32,15 @@
 		if (!$user) { goto('/auth'); return; }
 		if ($user.role !== 'teacher' && $user.role !== 'admin') { goto(`/${$user.role}`); return; }
 		try {
-			const data = await getKnowledgeBases(localStorage.token);
+			// Fetch courses and student count in parallel
+			const [data, studentsRes] = await Promise.all([
+				getKnowledgeBases(localStorage.token),
+				fetch(`${TUTOR_API_BASE_URL}/teacher/classroom/students`, {
+					headers: { Authorization: `Bearer ${localStorage.token}` }
+				})
+			]);
+
+			// Courses
 			const rawList = Array.isArray(data) ? data : (data?.data || []);
 			totalCourses = rawList.length;
 			totalFiles = rawList.reduce((acc, c) => acc + (c.data?.file_ids?.length || c.files?.length || 0), 0);
@@ -43,7 +54,18 @@
 					if (!subjectLabels[parsedSubject]) parsedSubject = 'other';
 					return { ...c, parsedSubject, cleanDescription };
 				});
-		} catch (e) { console.error(e); }
+
+			// Student count from classroom enrollment
+			if (studentsRes.ok) {
+				const students = await studentsRes.json();
+				studentCount = Array.isArray(students) ? students.length : 0;
+			} else {
+				studentCount = 0;
+			}
+		} catch (e) {
+			console.error(e);
+			studentCount = 0;
+		}
 		loading = false;
 	});
 
@@ -53,6 +75,13 @@
 		{ label: 'Announcements', icon: '📢', href: '/teacher/announcements', color: 'from-amber-500 to-orange-600' },
 		{ label: 'Students', icon: '👥', href: '/teacher/students', color: 'from-emerald-500 to-teal-600' }
 	];
+
+	function logout() {
+		localStorage.removeItem('token');
+		localStorage.removeItem('user');
+		user.set(null);
+		goto('/auth');
+	}
 </script>
 
 <svelte:head>
@@ -71,12 +100,27 @@
 				</button>
 			</div>
 			{#if $user}
-				<div class="flex items-center gap-3 pl-5 border-l border-slate-200 dark:border-slate-800 cursor-pointer group">
-					<div class="hidden md:block text-right">
-						<p class="text-sm font-semibold text-slate-900 dark:text-white">{$user.name}</p>
-						<p class="text-xs text-slate-500 capitalize">{$user.role}</p>
-					</div>
-					<div class="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-md">{$user.name.charAt(0).toUpperCase()}</div>
+				<div class="relative">
+					<button on:click={() => showUserMenu = !showUserMenu}
+						class="flex items-center gap-3 pl-5 border-l border-slate-200 dark:border-slate-800 cursor-pointer">
+						<div class="hidden md:block text-right">
+							<p class="text-sm font-semibold text-slate-900 dark:text-white">{$user.name}</p>
+							<p class="text-xs text-slate-500 capitalize">{$user.role}</p>
+						</div>
+						<div class="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-md">{$user.name.charAt(0).toUpperCase()}</div>
+					</button>
+					{#if showUserMenu}
+						<div class="absolute right-0 top-14 w-52 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl z-50 overflow-hidden">
+							<div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+								<p class="text-sm font-semibold text-slate-900 dark:text-white">{$user.name}</p>
+								<p class="text-xs text-slate-500">{$user.email}</p>
+							</div>
+							<button on:click={logout} class="flex items-center gap-3 w-full px-4 py-3 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors text-sm font-semibold">
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+								Déconnexion
+							</button>
+						</div>
+					{/if}
 				</div>
 			{/if}
 		</header>
@@ -138,7 +182,11 @@
 							<p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Students</p>
 							<div class="w-10 h-10 bg-emerald-50 dark:bg-emerald-500/10 rounded-xl flex items-center justify-center text-xl">👥</div>
 						</div>
-						<p class="text-4xl font-bold text-slate-900 dark:text-white">—</p>
+						{#if studentCount === null}
+							<div class="h-10 w-16 bg-slate-200 dark:bg-slate-700 rounded-lg animate-pulse"></div>
+						{:else}
+							<p class="text-4xl font-bold text-slate-900 dark:text-white">{studentCount}</p>
+						{/if}
 					</div>
 				</div>
 

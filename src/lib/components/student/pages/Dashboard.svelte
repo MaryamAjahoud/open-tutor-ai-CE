@@ -10,6 +10,7 @@
 	import { getSupportRequests, type SupportResponse, updateSupportChatId } from '$lib/apis/supports';
 	import { page } from '$app/stores';
 	import { toast } from 'svelte-sonner';
+	import { TUTOR_API_BASE_URL } from '$lib/constants';
 
 	const i18n = getContext<Writable<i18nType>>('i18n');
 
@@ -347,16 +348,37 @@
 	let dontShowAgain = false;
 
 	// Handle joining a course
-	function handleJoinCourse() {
-		if (courseCode === '0000') {
-			// Redirect to student chat component if code is 0000
-			goto('/student/chat');
-			showJoinCoursePopup = false;
-		} else if (courseCode.trim() !== '') {
-			// For other valid codes, you would implement the actual join logic here
-			// For now, just close the popup
-			showJoinCoursePopup = false;
+	let joinError = '';
+	let joinLoading = false;
+
+	async function handleJoinCourse() {
+		const code = courseCode.trim().toUpperCase();
+		if (!code) return;
+		joinError = '';
+		joinLoading = true;
+		try {
+			const token = localStorage.getItem('token');
+			const res = await fetch(`${TUTOR_API_BASE_URL}/teacher/join-classroom`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+				body: JSON.stringify({ code })
+			});
+			const data = await res.json();
+			if (res.ok) {
+				showJoinCoursePopup = false;
+				courseCode = '';
+				// Redirect to assignments to see the class assignments
+				goto('/student/assignments');
+			} else if (res.status === 409) {
+				joinError = 'Vous êtes déjà inscrit dans cette classe.';
+			} else {
+				joinError = data.detail || 'Code invalide. Vérifiez et réessayez.';
+			}
+		} catch (e) {
+			joinError = 'Erreur de connexion. Réessayez.';
+			console.error(e);
 		}
+		joinLoading = false;
 	}
 
 	// Handle creating support
@@ -487,15 +509,21 @@
 			</p>
 
 			<!-- Course Code Input -->
-			<div class="mb-6">
+			<div class="mb-4">
 				<input
 					type="text"
 					bind:value={courseCode}
 					placeholder={$i18n.t('Enter Course Code')}
-					class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-md text-center focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+					maxlength="6"
+					class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-md text-center text-xl font-mono tracking-widest uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
 					on:keydown={(e) => e.key === 'Enter' && handleJoinCourse()}
 				/>
 			</div>
+
+			<!-- Error message -->
+			{#if joinError}
+				<p class="text-center text-rose-600 dark:text-rose-400 text-sm font-semibold mb-4">{joinError}</p>
+			{/if}
 
 			<!-- Help Text -->
 			<p class="text-center text-gray-500 dark:text-gray-400 mb-6">
@@ -505,9 +533,11 @@
 			<!-- Join Button -->
 			<div class="flex justify-center mb-4">
 				<button
-					class="bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-800 text-white py-3 px-8 rounded-full font-medium"
+					class="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 dark:bg-indigo-700 dark:hover:bg-indigo-800 text-white py-3 px-8 rounded-full font-medium flex items-center gap-2"
 					on:click={handleJoinCourse}
+					disabled={joinLoading || !courseCode.trim()}
 				>
+					{#if joinLoading}<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>{/if}
 					{$i18n.t('Join Course')}
 				</button>
 			</div>

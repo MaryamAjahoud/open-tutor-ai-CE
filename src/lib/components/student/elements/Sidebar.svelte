@@ -153,6 +153,7 @@
 		student: [
 			{ id: 'dashboard', label: 'Dashboard', icon: Dashboard },
 			{ id: 'classrooms', label: 'My Classrooms', icon: Classroom },
+			{ id: 'courses', label: 'Courses', icon: Assignment },
 			{ id: 'supports', label: 'Support', icon: Classroom },
 			{ id: 'assignments', label: 'Assignments', icon: Assignment },
 			{ id: 'messages', label: 'Messages', icon: Message },
