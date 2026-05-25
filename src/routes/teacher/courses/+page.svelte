@@ -196,7 +196,7 @@
 </script>
 
 <svelte:head>
-	<title>My Courses | EduConnect</title>
+	<title>My Courses | Open Tutor</title>
 </svelte:head>
 
 <CourseManagementModal

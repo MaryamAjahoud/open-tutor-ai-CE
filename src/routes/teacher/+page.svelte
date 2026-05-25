@@ -85,7 +85,7 @@
 </script>
 
 <svelte:head>
-	<title>Teacher Dashboard | EduConnect</title>
+	<title>Teacher Dashboard | Open Tutor</title>
 </svelte:head>
 
 <div class="min-h-screen bg-slate-50 dark:bg-slate-950 flex font-sans text-slate-800 dark:text-slate-200">

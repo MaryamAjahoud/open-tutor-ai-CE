@@ -157,7 +157,7 @@
 	});
 </script>
 
-<svelte:head><title>Settings | EduConnect</title></svelte:head>
+<svelte:head><title>Settings | Open Tutor</title></svelte:head>
 
 <div class="h-screen bg-slate-50 dark:bg-slate-950 flex font-sans text-slate-800 dark:text-slate-200 overflow-hidden">
 	<TeacherSidebar bind:isOpen={isSidebarOpen} />

@@ -93,7 +93,7 @@
 	});
 </script>
 
-<svelte:head><title>Students | EduConnect</title></svelte:head>
+<svelte:head><title>Students | Open Tutor</title></svelte:head>
 
 <div class="min-h-screen bg-slate-50 dark:bg-slate-950 flex font-sans text-slate-800 dark:text-slate-200">
 	<TeacherSidebar bind:isOpen={isSidebarOpen} />

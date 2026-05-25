@@ -308,4 +308,8 @@ dist
 # cypress artifacts
 cypress/videos
 cypress/screenshots
-.vscode/settings.json
+.vscode/settings.jsonbackend/Miniconda3-latest-Linux-x86_64.sh
+backend/scratch.txt
+
+backend/Miniconda3-latest-Linux-x86_64.sh
+backend/scratch.txt

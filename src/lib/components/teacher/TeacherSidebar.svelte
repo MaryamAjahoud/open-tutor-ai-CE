@@ -63,9 +63,9 @@
 >
 	<div class="h-20 flex items-center px-6 border-b border-slate-800">
 		<div class="flex items-center gap-3">
-			<div class="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-500/20">E</div>
+			<div class="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-500/20">O</div>
 			<div class="text-xl font-bold tracking-tight text-white">
-				EduConnect
+				Open Tutor
 			</div>
 		</div>
 	</div>
