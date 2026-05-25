@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -841,4 +841,152 @@ async def get_classroom_courses_for_student(
         )
         for i in items
     ]
+
+
+# ─────────────────────────────────────────
+# Available Models — accessible to ALL authenticated users (students included)
+# ─────────────────────────────────────────
+
+class ModelInfo(BaseModel):
+    id: str
+    name: str
+
+
+@router.get("/available-models", response_model=List[ModelInfo])
+async def get_available_models(user=Depends(auth.get_verified_user)):
+    """Returns Ollama models accessible to any authenticated user."""
+    import httpx
+    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get(f"{ollama_url}/api/tags")
+            if res.status_code == 200:
+                return [
+                    ModelInfo(id=m["name"], name=m["name"].split(":")[0])
+                    for m in res.json().get("models", [])
+                    if m.get("name")
+                ]
+    except Exception as e:
+        print(f"[available-models] Ollama unreachable: {e}")
+    return []
+
+
+# ─────────────────────────────────────────
+# RAG Chat Proxy — calls Ollama directly with ChromaDB context
+# ─────────────────────────────────────────
+
+class RagChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class RagChatRequest(BaseModel):
+    knowledge_id: str
+    model: str
+    messages: List[RagChatMessage]
+
+
+@router.post("/rag-chat")
+async def rag_chat_proxy(
+    request: Request,
+    form: RagChatRequest,
+    user=Depends(auth.get_verified_user)
+):
+    """
+    RAG chat for students:
+    1. Calls OpenWebUI retrieval API to get PDF context (with embeddings)
+    2. Calls Ollama directly with that context (bypasses model permissions)
+    """
+    import httpx
+    import json
+    from fastapi.responses import StreamingResponse
+
+    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    webui_url = os.getenv("WEBUI_BASE_URL", "http://localhost:8080")
+    auth_header = request.headers.get("Authorization", "")
+
+    # ── Step 1: Retrieve context via OpenWebUI retrieval API ───────────────
+    context_text = ""
+    query = next((m.content for m in reversed(form.messages) if m.role == "user"), "")
+    if query:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                res = await client.post(
+                    f"{webui_url}/api/v1/retrieval/query/collection",
+                    headers={"Content-Type": "application/json", "Authorization": auth_header},
+                    json={
+                        "collection_names": [form.knowledge_id],
+                        "query": query,
+                        "k": 5
+                    }
+                )
+                if res.status_code == 200:
+                    data = res.json()
+                    # Documents can be nested [[chunk1, chunk2]] or flat [chunk1, chunk2]
+                    docs = data.get("documents", [])
+                    if docs:
+                        flat = docs[0] if isinstance(docs[0], list) else docs
+                        context_text = "\n\n---\n\n".join(str(d) for d in flat if d and str(d).strip())
+                else:
+                    print(f"[rag-chat] Retrieval returned {res.status_code}: {res.text[:200]}")
+        except Exception as e:
+            print(f"[rag-chat] Retrieval error: {e}")
+
+    print(f"[rag-chat] Retrieved {len(context_text)} chars of context for query: {query[:50]}")
+
+    # ── Step 2: Build messages with context ────────────────────────────────
+    if context_text:
+        system_content = (
+            "Tu es un assistant pédagogique expert. "
+            "Réponds UNIQUEMENT en te basant sur le contexte du cours ci-dessous. "
+            "Si la réponse ne s'y trouve pas, dis-le clairement.\n\n"
+            f"=== CONTENU DU COURS ===\n{context_text}\n========================"
+        )
+    else:
+        system_content = (
+            "Tu es un assistant pédagogique expert. "
+            "Note: Aucun document de cours n'a pu être récupéré. "
+            "Dis à l'étudiant que les documents du cours ne sont pas encore indexés."
+        )
+
+    ollama_messages = [{"role": "system", "content": system_content}]
+    ollama_messages += [
+        {"role": m.role, "content": m.content}
+        for m in form.messages
+        if m.role in ("user", "assistant")
+    ]
+
+    # ── Step 3: Stream from Ollama (OpenAI-compatible SSE) ─────────────────
+    async def generate():
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                async with client.stream(
+                    "POST",
+                    f"{ollama_url}/api/chat",
+                    json={"model": form.model, "messages": ollama_messages, "stream": True},
+                ) as resp:
+                    if resp.status_code != 200:
+                        body = await resp.aread()
+                        err_msg = f"❌ Erreur Ollama {resp.status_code}: {body.decode()[:200]}"
+                        yield f"data: {json.dumps({'choices': [{'delta': {'content': err_msg}, 'finish_reason': 'stop'}]})}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
+                    async for line in resp.aiter_lines():
+                        if not line:
+                            continue
+                        try:
+                            chunk = json.loads(line)
+                            content = chunk.get("message", {}).get("content", "")
+                            if content:
+                                payload = {"choices": [{"delta": {"content": content}, "finish_reason": None}]}
+                                yield f"data: {json.dumps(payload)}\n\n"
+                            if chunk.get("done"):
+                                yield "data: [DONE]\n\n"
+                        except Exception:
+                            pass
+        except Exception as e:
+            yield f"data: {json.dumps({'choices': [{'delta': {'content': f'❌ Erreur: {e}'}, 'finish_reason': 'stop'}]})}\n\n"
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 

@@ -37,13 +37,14 @@ original_has_permission = access_control.has_permission
 
 def patched_has_access(user_id: str, type: str = "write", access_control_dict: dict = None) -> bool:
     user = Users.get_user_by_id(user_id)
-    if user and user.role in ["teacher", "admin"]:
+    if user and user.role in ["teacher", "admin", "user"]:
         return True
     return original_has_access(user_id, type, access_control_dict)
 
 def patched_has_permission(user_id: str, permission_key: str, default_permissions: dict = {}) -> bool:
     user = Users.get_user_by_id(user_id)
-    if user and user.role in ["teacher", "admin"]:
+    # Grant full permissions to ALL authenticated roles (teacher, admin, student)
+    if user and user.role in ["teacher", "admin", "user"]:
         return True
     return original_has_permission(user_id, permission_key, default_permissions)
 

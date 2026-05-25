@@ -60,38 +60,41 @@
 	// ── Helpers ──────────────────────────────────────────────────────────────
 	async function loadModels(token?: string) {
 		const tok = token || localStorage.token;
+		const headers = { Authorization: `Bearer ${tok}` };
+
+		// Strategy 1 (primary): Our custom backend endpoint — direct Ollama, no permission filtering
 		try {
-			// Primary: /api/models aggregates Ollama + OpenAI + workspace models
-			const res = await fetch(`${TUTOR_BASE_URL}/api/models`, {
-				headers: { Authorization: `Bearer ${tok}` }
-			});
+			const res = await fetch(`${TUTOR_API_BASE_URL}/teacher/available-models`, { headers });
+			if (res.ok) {
+				const list: any[] = await res.json();
+				const models = list.filter((m: any) => m.id).map((m: any) => ({ id: m.id, name: m.name || m.id }));
+				if (models.length > 0) { availableModels = models; selectedModel = models[0].id; return; }
+			}
+		} catch { /* next */ }
+
+		// Strategy 2: /api/models  (OpenWebUI aggregated)
+		try {
+			const res = await fetch(`${TUTOR_BASE_URL}/api/models`, { headers });
 			if (res.ok) {
 				const data = await res.json();
 				const list: any[] = Array.isArray(data) ? data : (data?.data || []);
-				availableModels = list
-					.filter((m: any) => m.id)
-					.map((m: any) => ({ id: m.id, name: m.name || m.id }));
-				if (availableModels.length > 0) selectedModel = availableModels[0].id;
+				const models = list.filter((m: any) => m.id).map((m: any) => ({ id: m.id, name: m.name || m.id }));
+				if (models.length > 0) { availableModels = models; selectedModel = models[0].id; return; }
 			}
-		} catch (e) {
-			console.error('Failed to load models', e);
-		}
-		if (availableModels.length === 0) {
-			// Fallback: workspace models endpoint
-			try {
-				const res2 = await fetch(`${TUTOR_API_BASE_URL}/models/`, {
-					headers: { Authorization: `Bearer ${tok}` }
-				});
-				if (res2.ok) {
-					const data2 = await res2.json();
-					const list2: any[] = Array.isArray(data2) ? data2 : (data2?.data || []);
-					availableModels = list2
-						.filter((m: any) => m.id)
-						.map((m: any) => ({ id: m.id, name: m.name || m.id }));
-					if (availableModels.length > 0) selectedModel = availableModels[0].id;
-				}
-			} catch { /* no-op */ }
-		}
+		} catch { /* next */ }
+
+		// Strategy 3: /api/v1/models/
+		try {
+			const res = await fetch(`${TUTOR_API_BASE_URL}/models/`, { headers });
+			if (res.ok) {
+				const data = await res.json();
+				const list: any[] = Array.isArray(data) ? data : (data?.data || []);
+				const models = list.filter((m: any) => m.id).map((m: any) => ({ id: m.id, name: m.name || m.id }));
+				if (models.length > 0) { availableModels = models; selectedModel = models[0].id; return; }
+			}
+		} catch { /* next */ }
+
+		console.error('[RAG] All model endpoints failed — Ollama may be unreachable');
 	}
 
 	async function retryLoadModels() {
@@ -99,6 +102,7 @@
 		await loadModels();
 		modelsLoading = false;
 	}
+
 
 	async function scrollToBottom() {
 		await tick();
@@ -114,13 +118,13 @@
 		el.style.height = Math.min(el.scrollHeight, 160) + 'px';
 	}
 
-	// ── Core: RAG chat ────────────────────────────────────────────────────────
+	// ── Core: RAG chat via backend proxy (retrieves PDF context + calls Ollama) ──
 	async function sendMessage(text?: string) {
 		const content = (text ?? input).trim();
 		if (!content || isLoading) return;
 
 		if (!selectedModel) {
-			alert('Aucun modèle IA disponible. Assurez-vous qu\'Ollama ou un LLM est configuré dans OpenWebUI.');
+			alert('Aucun modèle IA disponible. Assurez-vous qu\'Ollama est démarré.');
 			return;
 		}
 
@@ -136,21 +140,18 @@
 
 		try {
 			const body = {
+				knowledge_id: knowledgeId,
 				model: selectedModel,
-				stream: true,
-				messages: [
-					{
-						role: 'system',
-						content: 'Tu es un assistant pédagogique expert. Réponds UNIQUEMENT en te basant sur les documents du cours fournis. Si l\'information ne figure pas dans les documents, dis-le clairement. Sois précis, pédagogique et encourage l\'apprentissage actif.'
-					},
-					...messages.slice(0, -1).slice(-8).map((m) => ({ role: m.role, content: m.content })),
-				],
-				files: [{ type: 'collection', id: knowledgeId }],
+				// Send last 10 messages for context (excluding the pending assistant message)
+				messages: messages.slice(0, -1).slice(-10).map((m) => ({ role: m.role, content: m.content })),
 			};
 
-			const res = await fetch(`${TUTOR_BASE_URL}/api/chat/completions`, {
+			const res = await fetch(`${TUTOR_API_BASE_URL}/teacher/rag-chat`, {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.token}` },
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Bearer ${localStorage.token}`
+				},
 				body: JSON.stringify(body),
 			});
 
@@ -178,7 +179,7 @@
 							messages = [...messages];
 							await scrollToBottom();
 						}
-					} catch { /* skip */ }
+					} catch { /* skip malformed chunks */ }
 				}
 			}
 
@@ -197,6 +198,49 @@
 			await scrollToBottom();
 			await tick();
 			inputEl?.focus();
+		}
+	}
+
+	// Fallback: backend proxy (direct Ollama, no PDF context)
+	async function sendViaProxy(content: string, assistantIdx: number) {
+		try {
+			const body = {
+				knowledge_id: knowledgeId,
+				model: selectedModel,
+				messages: messages.slice(0, -1).slice(-10).map((m) => ({ role: m.role, content: m.content })),
+			};
+			const res = await fetch(`${TUTOR_API_BASE_URL}/teacher/rag-chat`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.token}` },
+				body: JSON.stringify(body),
+			});
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			const reader = res.body!.getReader();
+			const decoder = new TextDecoder();
+			let accumulated = '';
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				const lines = decoder.decode(value, { stream: true }).split('\n').filter(l => l.startsWith('data: '));
+				for (const line of lines) {
+					const data = line.slice(6).trim();
+					if (data === '[DONE]') break;
+					try {
+						const delta = JSON.parse(data).choices?.[0]?.delta?.content;
+						if (delta) {
+							accumulated += delta;
+							messages[assistantIdx] = { role: 'assistant', content: accumulated, done: false };
+							messages = [...messages];
+							await scrollToBottom();
+						}
+					} catch { /* skip */ }
+				}
+			}
+			messages[assistantIdx] = { role: 'assistant', content: accumulated, done: true };
+			messages = [...messages];
+		} catch (e: any) {
+			messages[assistantIdx] = { role: 'assistant', content: `❌ **Erreur** : ${e.message}`, done: true };
+			messages = [...messages];
 		}
 	}
 

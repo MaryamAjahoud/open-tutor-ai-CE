@@ -4,7 +4,7 @@ Database module for OpenTutorAI
 This module defines the database tables specific to OpenTutorAI while using
 the same database connection as OpenWebUI to maintain compatibility.
 """
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, func, ARRAY
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, func, ARRAY, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
 from open_webui.internal.db import Base, get_db, JSONField
 
@@ -122,3 +122,80 @@ class Submission(Base):
 
     def __repr__(self):
         return f"<Submission(id={self.id}, assignment_id={self.assignment_id}, student_id={self.student_id})>"
+
+
+class TeacherClassroom(Base):
+    """
+    Each teacher gets one classroom with a unique 6-character code.
+    Students use this code to join and access the teacher's courses & assignments.
+    """
+    __tablename__ = f"{PREFIX}classroom"
+
+    id = Column(String, primary_key=True, index=True)
+    teacher_id = Column(String, unique=True, nullable=False, index=True)
+    class_code = Column(String(8), unique=True, nullable=False, index=True)
+    name = Column(String, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+    def __repr__(self):
+        return f"<TeacherClassroom(id={self.id}, teacher_id={self.teacher_id}, code={self.class_code})>"
+
+
+class ClassroomEnrollment(Base):
+    """Tracks which students have joined which classroom via class code."""
+    __tablename__ = f"{PREFIX}enrollment"
+
+    id = Column(String, primary_key=True, index=True)
+    classroom_id = Column(String, ForeignKey(f"{PREFIX}classroom.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(String, nullable=False, index=True)
+    enrolled_at = Column(DateTime, nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("classroom_id", "student_id", name="uq_enrollment_classroom_student"),
+    )
+
+    classroom = relationship("TeacherClassroom", backref="enrollments")
+
+    def __repr__(self):
+        return f"<ClassroomEnrollment(classroom_id={self.classroom_id}, student_id={self.student_id})>"
+
+
+class TeacherSettings(Base):
+    """Stores per-teacher preferences: language, theme, notifications, etc."""
+    __tablename__ = f"{PREFIX}teacher_settings"
+
+    id = Column(String, primary_key=True, index=True)
+    teacher_id = Column(String, unique=True, nullable=False, index=True)
+    language = Column(String, nullable=False, default="fr-FR")
+    timezone = Column(String, nullable=False, default="Africa/Casablanca")
+    notifications_enabled = Column(Boolean, nullable=False, default=True)
+    email_notifications = Column(Boolean, nullable=False, default=True)
+    theme = Column(String, nullable=False, default="system")
+    updated_at = Column(DateTime, nullable=True, onupdate=func.now())
+
+    def __repr__(self):
+        return f"<TeacherSettings(teacher_id={self.teacher_id}, language={self.language})>"
+
+
+class ClassroomKnowledge(Base):
+    """
+    Links a teacher's classroom to an OpenWebUI Knowledge Base (course).
+    Students in that classroom can use RAG chat grounded in the KB's documents.
+    """
+    __tablename__ = f"{PREFIX}classroom_knowledge"
+
+    id = Column(String, primary_key=True, index=True)
+    classroom_id = Column(String, ForeignKey(f"{PREFIX}classroom.id", ondelete="CASCADE"), nullable=False, index=True)
+    knowledge_id = Column(String, nullable=False)  # OpenWebUI Knowledge Base UUID
+    knowledge_name = Column(String, nullable=True)  # cached for display speed
+    shared_at = Column(DateTime, nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("classroom_id", "knowledge_id", name="uq_classroom_knowledge"),
+    )
+
+    classroom = relationship("TeacherClassroom", backref="shared_knowledge")
+
+    def __repr__(self):
+        return f"<ClassroomKnowledge(classroom_id={self.classroom_id}, knowledge_id={self.knowledge_id})>"
+

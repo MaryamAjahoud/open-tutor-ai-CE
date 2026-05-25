@@ -13,4 +13,8 @@ class AppConfig(BaseModel):
     ENABLE_LOGIN_FORM: bool = ENABLE_LOGIN_FORM
     JWT_EXPIRES_IN: str = JWT_EXPIRES_IN
     WEBHOOK_URL: Optional[str] = WEBHOOK_URL
-    USER_PERMISSIONS: dict = {"workspace": {"knowledge": True}}
+    USER_PERMISSIONS: dict = {
+        "workspace": {"knowledge": True},
+        "chat": {"use": True},
+        "features": {"use_models": True}
+    }
