@@ -14,6 +14,7 @@
 	export let className = 'h-full flex pt-8'; // CSS classes
 	export let useClassroom = true; // Whether to display classroom background
 	export let classroomModel: 'default' | 'alternative' = 'default'; // Which classroom model to use
+	export let avatarOverride: string = ''; // Override avatar ID (e.g. 'La Tutrice')
 
 	// State variables
 	let avatarContainer: HTMLDivElement;
@@ -171,8 +172,8 @@
 	let selectedAvatarId = ($settings as any)?.selectedAvatarId || 'The Scholar';
 
 	onMount(async () => {
-		// Retrieve avatar selection from user settings, with fallback
-		selectedAvatarId = ($settings as any)?.selectedAvatarId || 'The Scholar';
+		// Use override prop if provided, otherwise fall back to settings
+		selectedAvatarId = avatarOverride || ($settings as any)?.selectedAvatarId || 'The Scholar';
 
 		console.log(`Using avatar: ${selectedAvatarId}`);
 
@@ -497,14 +498,32 @@
 			const size = box.getSize(new THREE.Vector3());
 			const center = box.getCenter(new THREE.Vector3());
 
+			// Check if avatar is upside down (some models have inverted Y axis)
+			// If the model's min Y is above max Y, it's likely inverted
+			const isInverted = box.min.y > 0 && size.y > 0 && center.y > size.y;
+			if (isInverted || selectedAvatarId === 'La Tutrice') {
+				// Fix rotation for models with different coordinate systems
+				avatar.rotation.x = Math.PI; // Flip upright
+				avatar.rotation.z = Math.PI; // Fix facing direction
+				// Recalculate bounds after rotation
+				avatar.updateMatrixWorld(true);
+				box.setFromObject(avatar);
+				box.getSize(size);
+				box.getCenter(center);
+			}
+
 			// Adjust avatar position based on whether classroom is used or not
 			if (useClassroom) {
 				// Position avatar to match classroom environment (standing more to the left of the board)
-				avatar.position.set(-center.x - 1.2, -center.y + size.y / 2 - 0.6, -2.2); // Moved more to the left (-1.2 instead of -0.6)
+				avatar.position.set(-center.x - 1.2, -center.y + size.y / 2 - 0.6, -2.2);
 				// Rotate to face camera
-				avatar.rotation.y = Math.PI * 0.1; // Slightly increased angle to compensate for leftward position
+				if (selectedAvatarId !== 'La Tutrice') {
+					avatar.rotation.y = Math.PI * 0.1;
+				} else {
+					avatar.rotation.y = Math.PI * 0.1;
+				}
 				// Scale avatar to match classroom size
-				const avatarScale = 1.5; // Increased size (was 1.3)
+				const avatarScale = 1.5;
 				avatar.scale.set(avatarScale, avatarScale, avatarScale);
 			} else {
 				// Original position for avatar only view
@@ -1275,7 +1294,7 @@
 			// Handle empty or undefined message
 			if (!textToSpeak) {
 				console.log('AVATAR - Empty message, using fallback text');
-				textToSpeak = "I'm ready to assist you";
+				textToSpeak = "Je suis prête à vous aider";
 			}
 
 			// Speak the text - whether it's from the response field or original message
@@ -1302,7 +1321,7 @@
 			console.error('AVATAR - Critical error in processAndSpeak:', e);
 			try {
 				// Try to at least speak something
-				speakText('I encountered an error processing that message');
+				speakText('Désolée, une erreur est survenue lors du traitement de ce message');
 			} catch (speakError) {
 				console.error('AVATAR - Even speech failed:', speakError);
 			}
@@ -1386,37 +1405,66 @@
 		// Create a new utterance
 		const utterance = new SpeechSynthesisUtterance(text);
 
-		// Choose a voice (preferably an English male voice)
+		// Choose a voice (preferably a French male voice for natural French speech)
 		voices = speechSynthesis.getVoices();
 
-		// First try to find an English male voice
+		// Log available French voices for debugging
+		const frenchVoices = voices.filter((v) => v.lang.startsWith('fr'));
+		console.log('Available French voices:', frenchVoices.map((v) => `${v.name} (${v.lang})`));
+
+		// Priority 1: Google/Premium French male voice (best quality)
 		let preferredVoice = voices.find(
-			(voice) => voice.lang.includes('en') && voice.name.toLowerCase().includes('male')
+			(voice) =>
+				voice.lang.startsWith('fr') &&
+				(voice.name.includes('Google') || voice.name.includes('Premium') || voice.name.includes('Natural')) &&
+				voice.name.toLowerCase().includes('male')
 		);
 
-		// If no specific male voice found, try any English voice
-		if (!preferredVoice) {
-			preferredVoice = voices.find((voice) => voice.lang.includes('en'));
-		}
-
-		// Fallback to any voice that sounds natural
+		// Priority 2: Any French male voice by name
 		if (!preferredVoice) {
 			preferredVoice = voices.find(
 				(voice) =>
-					voice.name.includes('Google') ||
-					voice.name.includes('Natural') ||
-					voice.name.includes('Premium')
+					voice.lang.startsWith('fr') &&
+					(voice.name.toLowerCase().includes('male') ||
+					 voice.name.toLowerCase().includes('homme') ||
+					 voice.name.toLowerCase().includes('thomas') ||
+					 voice.name.toLowerCase().includes('nicolas') ||
+					 voice.name.toLowerCase().includes('pierre') ||
+					 voice.name.toLowerCase().includes('jean') ||
+					 voice.name.toLowerCase().includes('henri') ||
+					 voice.name.toLowerCase().includes('claude') ||
+					 voice.name.toLowerCase().includes('xavier') ||
+					 voice.name.toLowerCase().includes('yannick'))
+			);
+		}
+
+		// Priority 3: Any French voice at all
+		if (!preferredVoice) {
+			preferredVoice = voices.find((voice) => voice.lang.startsWith('fr'));
+		}
+
+		// Priority 4: Any male voice as last resort
+		if (!preferredVoice) {
+			preferredVoice = voices.find(
+				(voice) =>
+					voice.name.toLowerCase().includes('male') ||
+					voice.name.toLowerCase().includes('homme')
 			);
 		}
 
 		if (preferredVoice) {
 			utterance.voice = preferredVoice;
+			utterance.lang = preferredVoice.lang;
 			console.log('Selected voice:', preferredVoice.name, 'Language:', preferredVoice.lang);
+		} else {
+			// Force French language even if no specific French voice found
+			utterance.lang = 'fr-FR';
+			console.log('No French voice found, forcing lang to fr-FR');
 		}
 
-		// Set properties
-		utterance.rate = 1.0;
-		utterance.pitch = 1.0;
+		// Set properties — deep masculine voice (pitch 0.1 = minimum = very deep/masculine)
+		utterance.rate = 0.88;
+		utterance.pitch = 0.1;
 		utterance.volume = 1.0;
 
 		// Create basic viseme sequence
