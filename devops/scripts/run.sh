@@ -5,7 +5,7 @@ container_name="open-tutorai"
 host_port=8080
 container_port=8080
 
-docker build -t "$image_name" -f docker/Dockerfile.backend .
+docker build -t "$image_name" -f devops/docker/Dockerfile.backend .
 docker stop "$container_name" &>/dev/null || true
 docker rm "$container_name" &>/dev/null || true
 

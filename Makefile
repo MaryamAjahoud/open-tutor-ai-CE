@@ -5,7 +5,7 @@ else
     DOCKER_COMPOSE := docker compose
 endif
 
-COMPOSE_FILE := docker/docker-compose.yaml
+COMPOSE_FILE := devops/docker/docker-compose.yaml
 
 install:
 	$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) up -d

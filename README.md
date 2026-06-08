@@ -126,7 +126,7 @@ Use this path when you want hot-reload for active development or contribution.
      ```
      Or use the provided convenience script:
      ```bash
-     chmod +x scripts/dev.sh && ./scripts/dev.sh
+     chmod +x devops/scripts/dev.sh && ./devops/scripts/dev.sh
      ```
    - Interactive API docs: **http://localhost:8080/docs**
 
@@ -188,7 +188,7 @@ For **local development**, the defaults in `.env.example` work as-is (`DEBUG=tru
 
 **With Ollama bundled (recommended for local models):**
 ```bash
-docker compose --env-file .env -f docker/docker-compose.yaml up --build
+docker compose --env-file .env -f devops/docker/docker-compose.yaml up --build
 ```
 
 This starts:
@@ -197,15 +197,15 @@ This starts:
 
 **Without Ollama (use an external OpenAI-compatible API):**
 ```bash
-docker compose --env-file .env -f docker/docker-compose.yaml up --build open-tutorai
+docker compose --env-file .env -f devops/docker/docker-compose.yaml up --build open-tutorai
 ```
 
 Set `OPENAI_API_BASE_URL` and `OPENAI_API_KEY` in `.env`.
 
 Then in another terminal, you can also start Ollama separately:
 ```bash
-chmod +x scripts/run-ollama-docker.sh
-./scripts/run-ollama-docker.sh
+chmod +x devops/scripts/run-ollama-docker.sh
+./devops/scripts/run-ollama-docker.sh
 ```
 
 #### Step 4: Download AI Models (if using Ollama)
@@ -221,7 +221,7 @@ docker exec -it ollama ollama list
 
 If the backend was already running before the model was pulled, restart it:
 ```bash
-docker compose --env-file .env -f docker/docker-compose.yaml restart open-tutorai
+docker compose --env-file .env -f devops/docker/docker-compose.yaml restart open-tutorai
 ```
 
 #### Step 5: Access the Application
@@ -231,20 +231,20 @@ Open **http://localhost:8080** in your browser. The **first account created beco
 #### Stopping the Services
 
 ```bash
-docker compose --env-file .env -f docker/docker-compose.yaml down
+docker compose --env-file .env -f devops/docker/docker-compose.yaml down
 
 # Full reset (removes all data volumes)
-docker compose --env-file .env -f docker/docker-compose.yaml down -v
+docker compose --env-file .env -f devops/docker/docker-compose.yaml down -v
 ```
 
 #### GPU Support
 
 ```bash
 # NVIDIA GPU
-docker compose --env-file .env -f docker/docker-compose.yaml -f docker/docker-compose.gpu.yaml up --build
+docker compose --env-file .env -f devops/docker/docker-compose.yaml -f devops/docker/docker-compose.gpu.yaml up --build
 
 # AMD GPU
-docker compose --env-file .env -f docker/docker-compose.yaml -f docker/docker-compose.amdgpu.yaml up --build
+docker compose --env-file .env -f devops/docker/docker-compose.yaml -f devops/docker/docker-compose.amdgpu.yaml up --build
 ```
 
 ---

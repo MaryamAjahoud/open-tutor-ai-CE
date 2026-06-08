@@ -22,7 +22,7 @@ Services share the internal `app-network`. The backend must use the **service na
 OLLAMA_BASE_URL=http://ollama:11434
 ```
 
-This is already set in `docker/docker-compose.yaml`.
+This is already set in `devops/docker/docker-compose.yaml`.
 
 ### Standalone Docker container
 
@@ -74,8 +74,8 @@ rm var/tutorai.db
 **For Docker volumes:**
 
 ```bash
-docker compose -f docker/docker-compose.yaml down -v
-docker compose -f docker/docker-compose.yaml up --build
+docker compose -f devops/docker/docker-compose.yaml down -v
+docker compose -f devops/docker/docker-compose.yaml up --build
 ```
 
 ---
@@ -106,7 +106,7 @@ If you pulled a model while the backend was already running, the model list cach
 
 ```bash
 # Docker Compose
-docker compose -f docker/docker-compose.yaml restart open-tutorai
+docker compose -f devops/docker/docker-compose.yaml restart open-tutorai
 
 # Standalone container
 docker restart open-tutorai
@@ -134,12 +134,12 @@ The backend serves the built frontend from `ui/build/`. If that directory is mis
 cd ui && npm install && npm run build
 ```
 
-Then restart the backend. In Docker, the build happens automatically in the multi-stage `docker/Dockerfile.backend`.
+Then restart the backend. In Docker, the build happens automatically in the multi-stage `devops/docker/Dockerfile.backend`.
 
 ---
 
 ## Still stuck?
 
-- Check the logs: `docker compose -f docker/docker-compose.yaml logs -f`
+- Check the logs: `docker compose -f devops/docker/docker-compose.yaml logs -f`
 - Open an issue: [github.com/Open-TutorAi/open-tutor-ai-CE/issues](https://github.com/Open-TutorAi/open-tutor-ai-CE/issues)
 - Join the community: [Discord](https://discord.gg/BTQtE2deEm)

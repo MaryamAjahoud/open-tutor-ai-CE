@@ -162,7 +162,7 @@ if [[ $kill_compose == true ]]; then
     echo -e "${GREEN}${BOLD}Compose project dropped successfully.${NC}"
     exit
 else
-    DEFAULT_COMPOSE_COMMAND="docker compose -f docker/docker-compose.yaml"
+    DEFAULT_COMPOSE_COMMAND="docker compose -f devops/docker/docker-compose.yaml"
     if [[ $enable_gpu == true ]]; then
         # Validate and process command-line arguments
         if [[ -n $gpu_count ]]; then
@@ -174,20 +174,20 @@ else
             export OLLAMA_GPU_DRIVER=$(get_gpu_driver)
             export OLLAMA_GPU_COUNT=$gpu_count
         fi
-        DEFAULT_COMPOSE_COMMAND+=" -f docker/docker-compose.gpu.yaml"
+        DEFAULT_COMPOSE_COMMAND+=" -f devops/docker/docker-compose.gpu.yaml"
     fi
     if [[ $enable_api == true ]]; then
-        DEFAULT_COMPOSE_COMMAND+=" -f docker/docker-compose.api.yaml"
+        DEFAULT_COMPOSE_COMMAND+=" -f devops/docker/docker-compose.api.yaml"
         if [[ -n $api_port ]]; then
             export OLLAMA_WEBAPI_PORT=$api_port
         fi
     fi
     if [[ -n $data_dir ]]; then
-        DEFAULT_COMPOSE_COMMAND+=" -f docker/docker-compose.data.yaml"
+        DEFAULT_COMPOSE_COMMAND+=" -f devops/docker/docker-compose.data.yaml"
         export OLLAMA_DATA_DIR=$data_dir
     fi
     if [[ $enable_playwright == true ]]; then
-        DEFAULT_COMPOSE_COMMAND+=" -f docker/docker-compose.playwright.yaml"
+        DEFAULT_COMPOSE_COMMAND+=" -f devops/docker/docker-compose.playwright.yaml"
     fi
     if [[ -n $app_port ]]; then
         export OPEN_TUTORAI_PORT=$app_port
